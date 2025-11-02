@@ -89,6 +89,8 @@ async def search_videos(query: str, db: Session = Depends(get_db)):
 
     return {"results": response_data}
 
+from processing.secondary_analysis import analyze_frame
+
 @app.get("/videos")
 async def get_videos(db: Session = Depends(get_db)):
     """
@@ -96,3 +98,67 @@ async def get_videos(db: Session = Depends(get_db)):
     """
     videos = db.query(Video).order_by(Video.upload_time.desc()).all()
     return videos
+
+@app.get("/videos/{video_id}")
+async def get_video_details(video_id: int, db: Session = Depends(get_db)):
+    """
+    Fetches detailed information for a single video, including its frames.
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        return {"error": "Video not found"}
+    # Manually construct response to include frames
+    return {
+        "id": video.id,
+        "filename": video.filename,
+        "filepath": video.filepath,
+        "frames": [{"id": frame.id, "image_path": frame.image_path} for frame in video.frames]
+    }
+
+@app.post("/frames/{frame_id}/analyze")
+async def analyze_frame_endpoint(frame_id: int, background_tasks: BackgroundTasks):
+    """
+    Triggers a background task to perform secondary analysis on a specific frame.
+    """
+    background_tasks.add_task(analyze_frame, frame_id)
+    return {"message": "Frame analysis has been initiated in the background."}
+
+@app.get("/objects/{object_id}/trajectory")
+async def get_object_trajectory(object_id: int, db: Session = Depends(get_db)):
+    """
+    Fetches the trajectory of a recognized object across all frames.
+    """
+    detections = db.query(ObjectDetection).filter(ObjectDetection.object_id == object_id).all()
+
+    trajectory = []
+    for det in detections:
+        trajectory.append({
+            "frame_id": det.frame_id,
+            "video_id": det.frame.video_id,
+            "timestamp": det.frame.timestamp,
+            "box": [det.box_x1, det.box_y1, det.box_x2, det.box_y2],
+            "frame_path": det.frame.image_path
+        })
+
+    return {"trajectory": trajectory}
+
+@app.get("/frames/{frame_id}/detections")
+async def get_frame_detections(frame_id: int, db: Session = Depends(get_db)):
+    """
+    Fetches all object detections for a specific frame, including object type and attributes.
+    """
+    detections = db.query(ObjectDetection).filter(ObjectDetection.frame_id == frame_id).all()
+
+    response = []
+    for det in detections:
+        response.append({
+            "id": det.id,
+            "object_id": det.object_id,
+            "box_x1": det.box_x1,
+            "box_y1": det.box_y1,
+            "box_x2": det.box_x2,
+            "box_y2": det.box_y2,
+            "object_type": det.recognized_object.object_type,
+            "attributes": det.recognized_object.attributes
+        })
+    return response

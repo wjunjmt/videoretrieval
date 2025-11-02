@@ -47,6 +47,30 @@ class VideoSegment(Base):
 
     video = relationship("Video", back_populates="segments")
 
+from sqlalchemy.dialects.postgresql import JSONB
+
+class RecognizedObject(Base):
+    __tablename__ = "recognized_objects"
+    id = Column(Integer, primary_key=True, index=True)
+    object_type = Column(String) # e.g., 'person', 'car'
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    attributes = Column(JSONB) # To store license plate, etc.
+
+    detections = relationship("ObjectDetection", back_populates="recognized_object")
+
+class ObjectDetection(Base):
+    __tablename__ = "object_detections"
+    id = Column(Integer, primary_key=True, index=True)
+    frame_id = Column(Integer, ForeignKey("frames.id"))
+    object_id = Column(Integer, ForeignKey("recognized_objects.id"))
+    box_x1 = Column(Float)
+    box_y1 = Column(Float)
+    box_x2 = Column(Float)
+    box_y2 = Column(Float)
+
+    frame = relationship("Frame")
+    recognized_object = relationship("RecognizedObject", back_populates="detections")
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 

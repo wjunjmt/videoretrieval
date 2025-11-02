@@ -8,3 +8,6 @@ ffmpeg-python
 milvus
 pymilvus
 opencv-python-headless
+ultralytics
+torch
+torchvision

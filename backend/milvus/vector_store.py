@@ -7,6 +7,7 @@ MILVUS_PORT = "19530"
 # --- Collection Names ---
 VIDEO_SEGMENT_COLLECTION = "video_segments"
 FRAME_COLLECTION = "frames"
+REID_COLLECTION = "reid_objects" # New collection for ReID
 TAG_COLLECTION = "tags" # Kept for future use
 
 def create_milvus_collections():
@@ -44,6 +45,20 @@ def create_milvus_collections():
             index_params = {"metric_type": "L2", "index_type": "IVF_FLAT", "params": {"nlist": 1024}}
             collection.create_index(field_name="embedding", index_params=index_params)
             print(f"Collection '{FRAME_COLLECTION}' created.")
+
+        # --- ReID Object Collection ---
+        if not utility.has_collection(REID_COLLECTION):
+            fields = [
+                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=False),
+                FieldSchema(name="object_id", dtype=DataType.INT64), # Corresponds to RecognizedObject ID in PostgreSQL
+                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=2048) # Typical ReID model dimension
+            ]
+            schema = CollectionSchema(fields, description="Re-identification embeddings for tracking objects")
+            collection = Collection(REID_COLLECTION, schema)
+
+            index_params = {"metric_type": "L2", "index_type": "IVF_FLAT", "params": {"nlist": 1024}}
+            collection.create_index(field_name="embedding", index_params=index_params)
+            print(f"Collection '{REID_COLLECTION}' created.")
 
     except Exception as e:
         print(f"An error occurred while setting up Milvus: {e}")
