@@ -71,6 +71,47 @@ class ObjectDetection(Base):
     frame = relationship("Frame")
     recognized_object = relationship("RecognizedObject", back_populates="detections")
 
+class AlertRule(Base):
+    __tablename__ = "alert_rules"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    rule_type = Column(String) # e.g., 'intrusion', 'parking'
+    is_active = Column(Boolean, default=True)
+    parameters = Column(JSONB) # For storing polygon coordinates, time thresholds, etc.
+
+    alerts = relationship("Alert", back_populates="rule")
+
+class Alert(Base):
+    __tablename__ = "alerts"
+    id = Column(Integer, primary_key=True, index=True)
+    rule_id = Column(Integer, ForeignKey("alert_rules.id"))
+    frame_id = Column(Integer, ForeignKey("frames.id"))
+    object_id = Column(Integer, ForeignKey("recognized_objects.id"), nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default='new') # e.g., 'new', 'acknowledged', 'resolved'
+
+    rule = relationship("AlertRule", back_populates="alerts")
+    frame = relationship("Frame")
+    recognized_object = relationship("RecognizedObject")
+
+# --- User Management Models ---
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    is_active = Column(Boolean, default=True)
+    role_id = Column(Integer, ForeignKey("roles.id"))
+
+    role = relationship("Role")
+
+class Role(Base):
+    __tablename__ = "roles"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    permissions = Column(JSONB) # e.g., {"can_view_alerts": true}
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 

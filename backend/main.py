@@ -90,11 +90,13 @@ async def search_videos(query: str, db: Session = Depends(get_db)):
     return {"results": response_data}
 
 from processing.secondary_analysis import analyze_frame
+from auth import get_current_user
+from database.models import User
 
 @app.get("/videos")
-async def get_videos(db: Session = Depends(get_db)):
+async def get_videos(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
-    Fetches a list of all videos from the database.
+    Fetches a list of all videos from the database. Requires authentication.
     """
     videos = db.query(Video).order_by(Video.upload_time.desc()).all()
     return videos
@@ -162,3 +164,97 @@ async def get_frame_detections(frame_id: int, db: Session = Depends(get_db)):
             "attributes": det.recognized_object.attributes
         })
     return response
+
+# --- Alerting Endpoints ---
+from alerts.rules import (
+    create_alert_rule,
+    get_alert_rules,
+    get_alert_rule,
+    update_alert_rule,
+    delete_alert_rule,
+)
+from database.models import Alert
+from pydantic import BaseModel
+from typing import List, Dict, Any
+
+class AlertRuleCreate(BaseModel):
+    name: str
+    rule_type: str
+    parameters: Dict[str, Any]
+
+@app.post("/alerts/rules")
+def create_new_alert_rule(rule: AlertRuleCreate, db: Session = Depends(get_db)):
+    db_rule = create_alert_rule(db=db, name=rule.name, rule_type=rule.rule_type, parameters=rule.parameters)
+    return db_rule
+
+@app.get("/alerts/rules")
+def read_alert_rules(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    rules = get_alert_rules(db, skip=skip, limit=limit)
+    return rules
+
+@app.get("/alerts")
+def read_alerts(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    alerts = db.query(Alert).order_by(Alert.timestamp.desc()).offset(skip).limit(limit).all()
+    return alerts
+
+# --- Auth Endpoints ---
+from fastapi.security import OAuth2PasswordRequestForm
+from auth import create_access_token, get_user, get_password_hash, verify_password
+from datetime import timedelta
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+
+@app.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = get_user(db, form_data.username)
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=30)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/users/register")
+def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = get_user(db, username=user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    hashed_password = get_password_hash(user.password)
+    db_user = User(username=user.username, email=user.email, hashed_password=hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+# --- User & Role Management Endpoints ---
+from database.models import Role
+
+class RoleCreate(BaseModel):
+    name: str
+    permissions: Dict[str, Any]
+
+from auth import role_checker
+
+@app.post("/roles")
+def create_role(role: RoleCreate, db: Session = Depends(get_db), current_user: User = Depends(role_checker("manage_roles"))):
+    db_role = Role(name=role.name, permissions=role.permissions)
+    db.add(db_role)
+    db.commit()
+    db.refresh(db_role)
+    return db_role
+
+@app.get("/roles")
+def get_roles(db: Session = Depends(get_db)):
+    return db.query(Role).all()
+
+@app.get("/users")
+def get_users(db: Session = Depends(get_db)):
+    return db.query(User).all()

@@ -11,3 +11,7 @@ opencv-python-headless
 ultralytics
 torch
 torchvision
+shapely
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
