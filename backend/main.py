@@ -1,21 +1,25 @@
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
-import shutil
-import os
-from pathlib import Path
-
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Depends
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Depends, HTTPException
 import shutil
 import os
 from pathlib import Path
 from sqlalchemy.orm import Session
+from typing import List, Dict, Any
+from datetime import timedelta
 
-# Assume processing logic will be in this file
+# Import all necessary modules
 from processing.pipeline import process_video
+from processing.secondary_analysis import analyze_frame
 from search.text_search import search_videos_by_text
-from database.models import SessionLocal, Video
+from database.models import SessionLocal, Video, ObjectDetection, Alert, Role, User
 from models.loader import get_model_loader
+from auth import (
+    create_access_token, get_user, get_password_hash, verify_password,
+    get_current_user, role_checker
+)
+from alerts.rules import create_alert_rule, get_alert_rules
+from pydantic import BaseModel
 
-app = FastAPI(title="Multimodal Video Retrieval System")
+app = FastAPI(title="Multimodal Video Retrieval System", description="A comprehensive system for video content retrieval and analysis.")
 
 @app.on_event("startup")
 async def startup_event():
@@ -26,13 +30,7 @@ async def startup_event():
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Dependency to get a DB session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+from database.session import get_db
 
 @app.get("/")
 def read_root():

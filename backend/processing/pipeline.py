@@ -34,24 +34,25 @@ def process_video(video_path: str):
         video_segment_collection = Collection(VIDEO_SEGMENT_COLLECTION)
 
         # --- 3. Towhee Pipeline for Frame and Video Segment Vectorization ---
-        image_pipeline = model_loader.get_image_embedding_pipeline()
         video_pipeline = model_loader.get_text_video_pipeline()
 
         frame_vectors = []
         frames_for_db = []
 
         # Correctly decode video at 1 frame per second
-        decoded_frames = towhee.glob(video_path).video_decode.ffmpeg(fps=1)
+        frame_pipeline = (
+            towhee.glob(video_path)
+                  .video_decode.ffmpeg(fps=1)
+                  .image_embedding.timm(model_name='vit_base_patch16_224')
+        )
 
         frame_count = 0
-        for i, frame_img_np in enumerate(decoded_frames):
+        for i, (frame_img_np, frame_vec) in enumerate(frame_pipeline):
             # Save frame to disk
             frame_filename = f"{video_record.id}_frame_{i}.jpg"
             frame_filepath = FRAME_STORAGE_DIR / frame_filename
-            # Convert Towhee's image representation (numpy array) to a format OpenCV can save
             cv2.imwrite(str(frame_filepath), cv2.cvtColor(frame_img_np, cv2.COLOR_RGB2BGR))
 
-            frame_vec = image_pipeline(frame_img_np)
             frame_record = Frame(video_id=video_record.id, frame_number=i, timestamp=float(i), image_path=str(frame_filepath))
             frames_for_db.append(frame_record)
             frame_vectors.append(frame_vec)
@@ -74,7 +75,6 @@ def process_video(video_path: str):
         video_segment_collection.insert([[segment_record.id], [video_record.id], [video_embedding.tolist()]])
         print(f"Inserted video segment vector into Milvus for video ID: {video_record.id}")
 
-        # Update video record with frame count
         video_record.frame_count = frame_count
         db.commit()
 

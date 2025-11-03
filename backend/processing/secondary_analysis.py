@@ -17,9 +17,6 @@ plate_recognition_pipeline = towhee.pipelines.get_pipeline('license-plate-recogn
 face_recognition_pipeline = towhee.pipelines.get_pipeline('face-recognition-arcface')
 
 def check_for_alerts(db: Session, frame_id: int, detection: ObjectDetection):
-    """
-    Checks if a detection triggers any active alert rules.
-    """
     rules = get_alert_rules(db)
     for rule in rules:
         if rule.rule_type == 'intrusion':
@@ -39,9 +36,6 @@ def check_for_alerts(db: Session, frame_id: int, detection: ObjectDetection):
                 print(f"Intrusion Alert triggered for object {detection.object_id} by rule {rule.id}")
 
 def analyze_frame(frame_id: int):
-    """
-    Performs secondary analysis on a frame and checks for alerts.
-    """
     db = SessionLocal()
     try:
         frame = db.query(Frame).filter(Frame.id == frame_id).first()
@@ -79,14 +73,10 @@ def analyze_frame(frame_id: int):
                     if search_results and search_results[0] and search_results[0][0].distance < 0.2:
                         object_id = search_results[0][0].entity.get('object_id')
                         recognized_obj = db.query(RecognizedObject).filter(RecognizedObject.id == object_id).first()
-                        if attributes and recognized_obj:
-                            if not recognized_obj.attributes or recognized_obj.attributes.get('license_plate') != attributes.get('license_plate'):
-                                recognized_obj.attributes = {**(recognized_obj.attributes or {}), **attributes}
                     else:
                         recognized_obj = RecognizedObject(object_type=obj_class, attributes=attributes)
                         db.add(recognized_obj)
-                        db.commit()
-                        db.refresh(recognized_obj)
+                        db.commit(); db.refresh(recognized_obj)
                         reid_collection.insert([[recognized_obj.id], [recognized_obj.id], [reid_vector.tolist()]])
 
                     if recognized_obj:
@@ -96,8 +86,6 @@ def analyze_frame(frame_id: int):
                         check_for_alerts(db, frame_id, detection)
 
         db.commit()
-        print(f"Finished analysis for frame {frame_id}")
-
     except Exception as e:
         print(f"Error analyzing frame {frame_id}: {e}")
         db.rollback()

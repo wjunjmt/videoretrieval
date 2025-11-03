@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 import os
+from database.session import get_db
 
 # --- Configuration ---
 SECRET_KEY = os.getenv("SECRET_KEY", "a_very_secret_key")
@@ -38,7 +39,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 def get_user(db: Session, username: str):
     return db.query(User).filter(User.username == username).first()
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends("get_db")):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=401,
         detail="Could not validate credentials",
